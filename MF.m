@@ -1,4 +1,7 @@
-function [phi_alpha_vector, phi_omega_vector] = fede_MF(x, nAlphaTriang, nOmegaTriang, alpha_bounds, omega_bounds)
+function [phi_alpha_vector, phi_omega_vector] = MF(x, nAlphaTriang, nOmegaTriang, alpha_bounds, omega_bounds)
+% Function that is used to the compute the membership of the state of the
+% DC motor to each of the memberhsip functions that are defined in order to
+% implement the Fuzzy Q-iteration algorithm.
 
     %System state
     state1 = x(1);
