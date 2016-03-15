@@ -4,7 +4,7 @@
 %%%
 %%% DC Motor Controlled with Fuzzy Reinforcement Learning Controller
 %%%
-%%% J. Lee (4089286), I. Matamoros (4510704), F. Paredes Vall s (4439953) and L. Valk (4095154)
+%%% J. Lee (4089286), I. Matamoros (4510704), F. Paredes Valles (4439953) and L. Valk (4095154)
 %%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
