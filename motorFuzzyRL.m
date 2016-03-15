@@ -4,196 +4,217 @@
 %%%
 %%% DC Motor Controlled with Fuzzy Reinforcement Learning Controller
 %%%
-%%% J. Lee (4089286), I. Matamoros (4510704), F. Paredes Vallés (4439953) and L. Valk (4095154)
+%%% J. Lee (4089286), I. Matamoros (4510704), F. Paredes Vall s (4439953) and L. Valk (4095154)
 %%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%
-%%% System Dynamics (Model from Busoniu et. al., 2010.)
+%%% Choose to load previously stored results or run the Q-iteration again.
 %%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%% DC motor system matrices 
-A = [1 0.0049; 
-     0 0.9540];
- 
-B = [0.0021;
-     0.8505];
+clc; clear all; 
 
-%%% Sampling time
-Ts = 0.005;
+load_previous_results = false;
 
-%%% LQR Control matrices
-Qcost = [5 0;
-     0 0.01]; 
-Rcost = 0.01;
-
-%% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%
-%%% Reinforcement learning. Since the model is known, this can be done
-%%% offline without making observations from a simulation.
-%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-%% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%
-%%% Model state definitions
-%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-% Define boundaries of the signals
-alpha_bounds = [-pi    pi];
-omega_bounds = [-16*pi 16*pi];
-u_bounds     = [-10    10];
-
-nControlSteps = 15;
-u_values     = linspace(    u_bounds(1),    u_bounds(2),nControlSteps);
-
-gamma = 0.95;
-eps = 1;
-it = 0;
-
-%%% Choose which q iteration we do
-do_fuzzy_q_iteration = 1;
-
-%% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%
-%%% Fuzzy Q iteration
-%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-if(do_fuzzy_q_iteration)
+if(load_previous_results)
+    disp('Loading previous results for analysis')
     
-    % Define number of triangular fuzzy partitions
-    nAlphaTriang = 41;
-    nOmegaTriang = nAlphaTriang;
+    load('results/results_2016-03-14_13-55-27-397.mat') % A simple conventional Q learning result
     
-    % Initialize Theta matrices
-    Theta0 = zeros(nAlphaTriang,nOmegaTriang,nControlSteps);
-    Theta  = Theta0;
-   
-    % Define the cores of the membership functions
-    alpha_triangles = linspace(alpha_bounds(1),alpha_bounds(2),  nAlphaTriang);
-    omega_triangles = linspace(omega_bounds(1),omega_bounds(2),  nOmegaTriang);
-        
+%     load('results/results_fede.mat')                  % The results obtained by Fede
+else
+    disp('Recomputing results')
     
-    while (eps > 1e-8)
-        it = it + 1;
-        Thetanext = Theta0;
-        for alpha_index = 1:nAlphaTriang
-            for omega_index = 1:nOmegaTriang
-                for u_index = 1:nControlSteps
-                   % Do the update for each element
+    %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%%
+    %%% System Dynamics (Model from Busoniu et. al., 2010.)
+    %%%
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-                   xNow = [alpha_triangles(alpha_index);
-                           omega_triangles(omega_index)];
+    %%% DC motor system matrices 
+    A = [1 0.0049; 
+         0 0.9540];
 
-                   uNow = u_values(u_index);
+    B = [0.0021;
+         0.8505];
 
-                   xNext = A*xNow + B*uNow;
-                   
-                   if(xNext(1) > alpha_bounds(2))
-                       xNext(1) = alpha_bounds(2);
-                   elseif xNext(1) < alpha_bounds(1)
-                           xNext(1) = alpha_bounds(1);
-                   end
-                   
-                   if(xNext(2) > omega_bounds(2))
-                       xNext(2) = omega_bounds(2);
-                   elseif xNext(2) < omega_bounds(1)
-                           xNext(2) = omega_bounds(1);
-                   end                       
-                     
+    %%% Sampling time
+    Ts = 0.005;
 
-                   alphaNext = xNext(1);
-                   omegaNext = xNext(2);
+    %%% LQR Control matrices
+    Qcost = [5 0;
+         0 0.01]; 
+    Rcost = 0.01;
 
-                   rewardNow = -xNow'*Qcost*xNow - uNow'*Rcost*uNow;        
+    %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%%
+    %%% Reinforcement learning. Since the model is known, this can be done
+    %%% offline without making observations from a simulation.
+    %%%
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-                   SumdotMultiply = zeros(1,nControlSteps);  
+    %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%%
+    %%% Model state definitions
+    %%%
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-                   for u_prime = 1:nControlSteps
-                       
-                       [phi_alpha_vector, phi_omega_vector] = MF(xNext, nAlphaTriang, nOmegaTriang, alpha_bounds, omega_bounds);
+    % Define boundaries of the signals
+    alpha_bounds = [-pi    pi];
+    omega_bounds = [-16*pi 16*pi];
+    u_bounds     = [-10    10];
+
+    nControlSteps = 15;
+    u_values     = linspace(    u_bounds(1),    u_bounds(2),nControlSteps);
+
+    gamma = 0.99;
+    eps = 1;
+    it = 0;
+    
+    maxNumberOfIterations = inf;
+
+    %%% Choose which q iteration we do
+    do_fuzzy_q_iteration = 0;
+
+    %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%%
+    %%% Fuzzy Q iteration
+    %%%
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+    if(do_fuzzy_q_iteration)
+
+        % Define number of triangular fuzzy partitions
+        nAlphaTriang = 41;
+        nOmegaTriang = nAlphaTriang;
+
+        % Initialize Theta matrices
+        Theta0 = zeros(nAlphaTriang,nOmegaTriang,nControlSteps);
+        Theta  = Theta0;
+
+        % Define the cores of the membership functions
+        alpha_triangles = linspace(alpha_bounds(1),alpha_bounds(2),  nAlphaTriang);
+        omega_triangles = linspace(omega_bounds(1),omega_bounds(2),  nOmegaTriang);
 
 
-                       MuMatrix = min(  repmat(phi_omega_vector',[nAlphaTriang 1]) , repmat(phi_alpha_vector,[1 nOmegaTriang])  );
-                       
-                       
-                       SumdotMultiply(u_prime) = sum(sum(MuMatrix.*Theta(:,:,u_prime)));
+        while (eps > 1e-8 && it < maxNumberOfIterations)
+            it = it + 1;
+            Thetanext = Theta0;
+            for alpha_index = 1:nAlphaTriang
+                for omega_index = 1:nOmegaTriang
+                    for u_index = 1:nControlSteps
+                       % Do the update for each element
 
+                       xNow = [alpha_triangles(alpha_index);
+                               omega_triangles(omega_index)];
+
+                       uNow = u_values(u_index);
+
+                       xNext = A*xNow + B*uNow;
+
+                       if(xNext(1) > alpha_bounds(2))
+                           xNext(1) = alpha_bounds(2);
+                       elseif xNext(1) < alpha_bounds(1)
+                               xNext(1) = alpha_bounds(1);
+                       end
+
+                       if(xNext(2) > omega_bounds(2))
+                           xNext(2) = omega_bounds(2);
+                       elseif xNext(2) < omega_bounds(1)
+                               xNext(2) = omega_bounds(1);
+                       end                       
+
+                       rewardNow = -xNow'*Qcost*xNow - uNow'*Rcost*uNow;        
+
+                       SumdotMultiply = zeros(1,nControlSteps);  
+
+                       for u_prime = 1:nControlSteps
+
+                           [phi_alpha_vector, phi_omega_vector] = MF(xNext, nAlphaTriang, nOmegaTriang, alpha_bounds, omega_bounds);
+
+                           MuMatrix = min(  repmat(phi_omega_vector',[nAlphaTriang 1]) , repmat(phi_alpha_vector,[1 nOmegaTriang])  );
+
+                           SumdotMultiply(u_prime) = sum(sum(MuMatrix.*Theta(:,:,u_prime)));
+
+                        end
+
+                        [MuThetavalsMax,MuThetavalsMaxIndex] = max(SumdotMultiply);
+
+                        Thetanext(alpha_index,omega_index,u_index) = rewardNow + gamma*MuThetavalsMax;
                     end
-                    
-                    [MuThetavalsMax,MuThetavalsMaxIndex] = max(SumdotMultiply);
+                end       
+            end
 
-                   Thetanext(alpha_index,omega_index,u_index) = rewardNow + gamma*MuThetavalsMax;
-                end
-            end       
-        end
+            eps = max(max(max(abs(Theta-Thetanext))));
+            disp(['Fuzzy Iteration: ' num2str(it) ' eps = ' num2str(eps)]);        
+            Theta = Thetanext;  
+        end    
 
-        eps = max(max(max(abs(Theta-Thetanext))));
-        disp(['Fuzzy Iteration: ' num2str(it) ' eps = ' num2str(eps)]);        
-        Theta = Thetanext;  
-    end    
+    %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%%
+    %%% Conventional Q iteration
+    %%%
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+    else % Do normal q iteration
+
+        % Define number of discrete steps for the states and the control signal.
+        nAlphaSteps = 41;
+        nOmegaSteps = nAlphaSteps;
+
+        % Define the values that the states and the control signal can attain.
+        alpha_values = linspace(alpha_bounds(1),alpha_bounds(2),  nAlphaSteps);
+        omega_values = linspace(omega_bounds(1),omega_bounds(2),  nOmegaSteps);    
+
+        % Initialize Q matrices
+        Q0 = zeros(nAlphaSteps,nOmegaSteps,nControlSteps);
+        Q  = Q0;
+
+        while (eps > 1e-8 && it < maxNumberOfIterations)
+            it = it + 1;
+            Qnext = Q0;
+            for alpha_index = 1:nAlphaSteps
+                for omega_index = 1:nOmegaSteps
+                    for u_index = 1:nControlSteps
+                       % Do the update for each element
+
+                       xNow = [alpha_values(alpha_index);
+                               omega_values(omega_index)];
+
+                       uNow = u_values(u_index);
+
+                       xNext = A*xNow + B*uNow;
+
+                       alphaNext = xNext(1);
+                       omegaNext = xNext(2);
+
+                       [~,alphaNextIndex] = min(abs(alpha_values - alphaNext));
+                       [~,omegaNextIndex] = min(abs(omega_values - omegaNext));
+
+
+                       rewardNow = -xNow'*Qcost*xNow - uNow'*Rcost*uNow;        
+
+                       Qval = max(Q(alphaNextIndex,omegaNextIndex,:));
+
+                       Qnext(alpha_index,omega_index,u_index) = rewardNow + gamma*Qval;
+                    end
+                end       
+            end
+
+            eps = max(max(max(abs(Q-Qnext))));
+            disp(['Iteration: ' num2str(it) ' eps = ' num2str(eps)]);
+            Q = Qnext;  
+        end    
+    end
+
+    resultfileUTCtime = datestr(datetime('now','TimeZone','UTC'),'YYYY-mm-dd_HH-MM-SS-FFF');
+    resultfilename = ['results/results_' resultfileUTCtime];
+    save([resultfilename]);
+    disp(['Storing results in: ' resultfilename '.mat'])
+end    
     
-%% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%
-%%% Conventional Q iteration
-%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        
-else % Do normal q iteration
-    
-    % Define number of discrete steps for the states and the control signal.
-    nAlphaSteps = 21;
-    nOmegaSteps = nAlphaSteps;
-
-    % Define the values that the states and the control signal can attain.
-    alpha_values = linspace(alpha_bounds(1),alpha_bounds(2),  nAlphaSteps);
-    omega_values = linspace(omega_bounds(1),omega_bounds(2),  nOmegaSteps);    
-    
-    % Initialize Q matrices
-    Q0 = zeros(nAlphaSteps,nOmegaSteps,nControlSteps);
-    Q  = Q0;
-    
-    while (eps > 1e-3 && it < maxNumberOfIterations)
-        it = it + 1;
-        Qnext = Q0;
-        for alpha_index = 1:nAlphaSteps
-            for omega_index = 1:nOmegaSteps
-                for u_index = 1:nControlSteps
-                   % Do the update for each element
-
-                   xNow = [alpha_values(alpha_index);
-                           omega_values(omega_index)];
-
-                   uNow = u_values(u_index);
-
-                   xNext = A*xNow + B*uNow;
-
-                   alphaNext = xNext(1);
-                   omegaNext = xNext(2);
-
-                   [~,alphaNextIndex] = min(abs(alpha_values - alphaNext));
-                   [~,omegaNextIndex] = min(abs(omega_values - omegaNext));
-
-
-                   rewardNow = -xNow'*Qcost*xNow - uNow'*Rcost*uNow;        
-
-                   Qval = max(Q(alphaNextIndex,omegaNextIndex,:));
-
-                   Qnext(alpha_index,omega_index,u_index) = rewardNow + gamma*Qval;
-                end
-            end       
-        end
-
-        eps = max(max(max(abs(Q-Qnext))));
-        disp(['Iteration: ' num2str(it) ' eps = ' num2str(eps)]);
-        Q = Qnext;  
-    end    
-end
-
 %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%
 %%% Simulation of the system, currently using a state feedback (LQR)
@@ -216,8 +237,7 @@ reward = zeros(1,nSamples);
 rewardDiscrete = zeros(1,nSamples);
 
 %%% Initial state
-X(:,1) = [-pi;
-          0];
+X(:,1) = [-pi;0];
 
 for k = 1:nSamples  
     % Control signal for this step
@@ -230,7 +250,7 @@ for k = 1:nSamples
         SumdotMultiply = zeros(1,nControlSteps);  
 
         for u_prime = 1:nControlSteps
-            
+           
            xNowLimited = xNow; 
            if(xNowLimited(1) > alpha_bounds(2))
                xNowLimited(1) = alpha_bounds(2);
@@ -246,7 +266,7 @@ for k = 1:nSamples
 
            [phi_alpha_vector, phi_omega_vector] = MF(xNowLimited, nAlphaTriang, nOmegaTriang, alpha_bounds, omega_bounds);
 
-           MuMatrix = min(  repmat(phi_omega_vector',[nAlphaTriang 1]) , repmat(phi_alpha_vector,[1 nOmegaTriang])  );
+           MuMatrix = min(repmat(phi_omega_vector',[nAlphaTriang 1]) , repmat(phi_alpha_vector,[1 nOmegaTriang]));
 
            SumdotMultiply(u_prime) = sum(sum(MuMatrix.*Theta(:,:,u_prime)));
 
@@ -276,112 +296,205 @@ for k = 1:nSamples
     end
 end
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%
-%%% Plot simulation results
-%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-close all;
-
-Width = 1.5;
-
-%%% Plot the angle
-subplot(4,1,1);
-plot(time,X(1,:),'k','LineWidth',Width);
-ylabel('\phi (rad)')
-grid on
-axis([0 0.5 -3.5 0.5])
-
-%%% Plot the angular velocity
-subplot(4,1,2);
-plot(time,X(2,:),'k','LineWidth',Width);
-ylabel('\omega (rad/s)')
-grid on
-
-%%% Plot the control signal
-subplot(4,1,3);
-plot(time,U(:),'k','LineWidth',Width);
-ylabel('u (V)')
-grid on
-
-%%% Plot the reward signal
-subplot(4,1,4);
-plot(time,[reward(:)],'k','LineWidth',Width);
-    ylabel('r (-)')
-    xlabel('time (s)');  
-    grid on
-    axis([0 0.5 -60 10])
-    
-    
-%% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%
 %%% Reconstruct fuzzy Q
 %%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+u_zero_index = (nControlSteps+1)/2; % To see plot for u  0;
+
 if(do_fuzzy_q_iteration)
 
-    nPlotPoints = 100;
-    alpha_values_plot = linspace(alpha_bounds(1),alpha_bounds(2),nPlotPoints);
-    omega_values_plot = linspace(omega_bounds(1),omega_bounds(2),nPlotPoints);
+    nPlotPoints = 50;
+    alpha_values_fuzzy_plot = linspace(alpha_bounds(1),alpha_bounds(2),nPlotPoints);
+    omega_values_fuzzy_plot = linspace(omega_bounds(1),omega_bounds(2),nPlotPoints);
 
-    u_index = (nControlSteps+1)/2; % To see plot for u  0;
-    Qplotvalues = zeros(nPlotPoints,nPlotPoints);
+    fuzzyQplotvalues = zeros(nPlotPoints,nPlotPoints);
     
     for alpha_plot_index = 1:nPlotPoints
         for omega_plot_index = 1:nPlotPoints
-            alpha_now = alpha_values_plot(alpha_plot_index);
-            omega_now = omega_values_plot(omega_plot_index);
+            alpha_now = alpha_values_fuzzy_plot(alpha_plot_index);
+            omega_now = omega_values_fuzzy_plot(omega_plot_index);
             xNow = [alpha_now;omega_now];
             
             [phi_alpha_vector, phi_omega_vector] = MF(xNow, nAlphaTriang, nOmegaTriang, alpha_bounds, omega_bounds);
             MuMatrix = min(  repmat(phi_omega_vector',[nAlphaTriang 1]) , repmat(phi_alpha_vector,[1 nOmegaTriang])  );
              
-            Qplotvalues(alpha_plot_index,omega_plot_index) = sum(sum(MuMatrix.*Theta(:,:,u_index)));
+            fuzzyQplotvalues(alpha_plot_index,omega_plot_index) = sum(sum(MuMatrix.*Theta(:,:,u_zero_index)));
         end
     end
+
 end
 
-figure(2)
-[alpha_values_mesh,omega_values_mesh] = meshgrid(alpha_values_plot,omega_values_plot);
-hFig = surf(alpha_values_mesh,omega_values_mesh,Qplotvalues);
-
-%% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%
-%%% Reconstruct fuzzy Q
+%%% Reconstruct policy
 %%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 if(do_fuzzy_q_iteration)
     
     nPlotPoints = 50;
-    alpha_values_plot = linspace(alpha_bounds(1),alpha_bounds(2),nPlotPoints);
-    omega_values_plot = linspace(omega_bounds(1),omega_bounds(2),nPlotPoints);
+    alpha_values_fuzzy_plot = linspace(alpha_bounds(1),alpha_bounds(2),nPlotPoints);
+    omega_values_fuzzy_plot = linspace(omega_bounds(1),omega_bounds(2),nPlotPoints);
+    u_values_fuzzy_plot     = zeros(nPlotPoints,nPlotPoints);
+
     
-    uplotvalues = zeros(nPlotPoints,nPlotPoints);
+    counter = 0;
     
     for alpha_plot_index = 1:nPlotPoints
         for omega_plot_index = 1:nPlotPoints 
             for u_prime = 1:nControlSteps
-                alpha_now = alpha_values_plot(alpha_plot_index);
-                omega_now = omega_values_plot(omega_plot_index);
-                xNow = [alpha_now;omega_now];
+                alpha_now = alpha_values_fuzzy_plot(alpha_plot_index);
+                omega_now = omega_values_fuzzy_plot(omega_plot_index);
+                xNow = [alpha_now; omega_now];
 
-                [phi_alpha_vector, phi_omega_vector] = MF(xNow, nAlphaTriang, nOmegaTriang, alpha_bounds, omega_bounds);
-                MuMatrix = min(  repmat(phi_omega_vector',[nAlphaTriang 1]) , repmat(phi_alpha_vector,[1 nOmegaTriang])  );
+               [phi_alpha_vector, phi_omega_vector] = MF(xNow, nAlphaTriang, nOmegaTriang, alpha_bounds, omega_bounds);
+                MuMatrix = min(repmat(phi_omega_vector',[nAlphaTriang 1]) , repmat(phi_alpha_vector,[1 nOmegaTriang]));
                 SumdotMultiply(u_prime) = sum(sum(MuMatrix.*Theta(:,:,u_prime)));
             end
 
-        [MuThetavalsMax,MuThetavalsMaxIndex]           = max(SumdotMultiply);  
-        uplotvalues(alpha_plot_index,omega_plot_index) = u_values(MuThetavalsMaxIndex);
+        [MuThetavalsMax,MuThetavalsMaxIndex]            = max(SumdotMultiply);  
+         u_values_fuzzy_plot(alpha_plot_index,omega_plot_index) = u_values(MuThetavalsMaxIndex);
+         
         end
     end
     
-    figure(3)
-    [alpha_values_mesh,omega_values_mesh] = meshgrid(alpha_values_plot,omega_values_plot);
-    hFig = surf(alpha_values_mesh,omega_values_mesh,uplotvalues);  
+end
+
+%% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%
+%%% Create figures and handles
+%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+close all;    
+
+%%% Handles for the all-in-one figure
+combinedFig = figure;
+combinedAx_Alpha  = subplot(4,2,1);
+combinedAx_Omega  = subplot(4,2,3);
+combinedAx_u      = subplot(4,2,5);
+combinedAx_r      = subplot(4,2,7);
+combinedAx_Q      = subplot(4,2,[2,4]);
+combinedAx_Policy = subplot(4,2,[6,8]);
+
+%%% Handles for the time signal figure
+separateFig_Time  = figure;
+separateAx_Alpha  = subplot(4,1,1);
+separateAx_Omega  = subplot(4,1,2);
+separateAx_u      = subplot(4,1,3);
+separateAx_r      = subplot(4,1,4);
+
+%%% Handles for the Q value figure
+separateFig_Q     = figure;
+separateAx_Q      = subplot(1,1,1);
+
+%%% Handles for the policy figure
+separateFig_Policy = figure;
+separateAx_Policy  = subplot(1,1,1);
+
+%%% Properties for all figures
+% set(findall(gcf,'type','text'),'FontSize',15)
+
+%% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%
+%%% Plot time simulation results
+%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Width = 1.5;
+
+%%% Plot the angle
+for ax = [combinedAx_Alpha separateAx_Alpha]
+    axes(ax);
+    plot(time,X(1,:),'k','LineWidth',Width);
+    ylabel('\phi (rad)')
+    grid on
+    xlim([0 t_end])
+end
+
+%%% Plot the angular velocity
+for ax = [combinedAx_Omega separateAx_Omega]
+    axes(ax)
+    plot(time,X(2,:),'k','LineWidth',Width);
+    ylabel('\omega (rad/s)')
+    grid on
+    xlim([0 t_end])    
+end
+
+%%% Plot the control signal
+for ax = [combinedAx_u separateAx_u]
+    axes(ax)
+    plot(time,U(:),'k','LineWidth',Width);
+    ylabel('u (V)')
+    xlim([0 t_end])
+    grid on
+end
+
+%%% Plot the reward signal
+for ax = [combinedAx_r separateAx_r]
+    axes(ax)
+    plot(time,[reward(:)],'k','LineWidth',Width);
+    ylabel('r (-)')
+    xlabel('time (s)');  
+    grid on
+    xlim([0 t_end])
+end
+
+%% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%
+%%% Plot Q values or Q function and Policy
+%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+for ax = [combinedAx_Q separateAx_Q]
+    axes(ax)
+    colormap('gray')
+    view(0,90)
+    %%% Plot the Q function for u = 0
+    if(do_fuzzy_q_iteration)
+        Qplotvalues = fuzzyQplotvalues;
+        alpha_values_plot = alpha_values_fuzzy_plot;
+        omega_values_plot = omega_values_fuzzy_plot;
+    else
+        Qplotvalues = Q(:,:,u_zero_index);
+        alpha_values_plot = alpha_values;
+        omega_values_plot = omega_values;        
+    end
+
+    surf(alpha_values_plot,omega_values_plot,Qplotvalues','EdgeColor','none');
+
+    % xlabel('\phi (rad)')
+    ylabel('\omega (rad/s)')
+    title('Q(\phi,\omega,0) (-)')
+    axis([-pi pi -16*pi 16*pi])
+end
+
+%%% Plot the policy
+for ax = [combinedAx_Policy separateAx_Policy]
+    axes(ax)   
+    
+    if(do_fuzzy_q_iteration)
+        u_values_plot = u_values_fuzzy_plot;
+        alpha_values_plot = alpha_values_fuzzy_plot;
+        omega_values_plot = omega_values_fuzzy_plot;        
+    else
+        [~, policyIndices] = max(Q,[],3);        
+        u_values_plot = u_values(policyIndices);
+        alpha_values_plot = alpha_values;
+        omega_values_plot = omega_values;          
+    end
+    
+    surf(alpha_values_plot,omega_values_plot,u_values_plot','EdgeColor','none');  
+    colorbar
+    view(0,90)
+    grid on
     colormap('gray')
     colorbar
     view(0,90)
     xlabel('\phi (rad)')
     ylabel('\omega (rad/s)')
-           
+    title('h(\phi,\omega) (V)') 
+    axis([-pi pi -16*pi 16*pi])        
 end
